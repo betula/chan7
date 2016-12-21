@@ -9,6 +9,7 @@ function Chan(cap) {
     queue = [];
 
   function reset() {
+    queue = [];
     wait = new Promise((resolve, reject) => {
       ready = resolve;
       error = reject;
@@ -57,7 +58,7 @@ function Chan(cap) {
         try {
           await wait;
           chan.send(await fn(get()));
-        } catch(err) {
+        } catch (err) {
           chan.throw(err);
         }
       }
@@ -88,6 +89,8 @@ function Chan(cap) {
     if (!readonly) {
       Object.assign(chan, {
         send,
+        reset,
+
         readonly: make(true)
       });
     }
@@ -107,8 +110,8 @@ Chan.join = (...chans) => {
     for(;;) {
       try {
         await ch.wait;
-        chan.send(await ch.get());
-      } catch(err) {
+        chan.send(ch.get());
+      } catch (err) {
         chan.throw(err);
       }
     }
