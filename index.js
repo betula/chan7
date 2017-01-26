@@ -1,130 +1,125 @@
 
 module.exports = Chan;
 
-function Chan(cap) {
-  let
-    wait,
-    ready,
-    error,
-    queue = [];
+function Chan(cap = Infinity) {
+  const
+    _sendQueue = [];
 
-  function reset() {
-    queue = [];
-    wait = new Promise((resolve, reject) => {
-      ready = resolve;
+  let
+    _waitList = [],
+    _tickQueue = 0,
+    _tickPhase = false;
+
+  function _tick() {
+    if (_tickPhase) {
+      _tickQueue++;
+      return;
+    }
+    _tickPhase = true;
+
+    let list = _waitList;
+    _waitList = [];
+
+    list = list.filter((obj) => {
+      if (obj.expr()) {
+        obj.ok();
+      } else {
+        return true;
+      }
+    });
+
+    _waitList = list.concat(_waitList);
+
+    _tickPhase = false;
+    if (_tickQueue > 0) {
+      _tickQueue = 0;
+      _tick();
+    }
+  }
+
+  function _wait(expr, action) {
+    if (expr()) {
+      return Promise.resolve(action && action());
+    }
+
+    let ok;
+    const promise = new Promise((resolve) => {
+      ok = () => {
+        resolve(action && action());
+      }
+    });
+
+    _waitList.push({
+      expr,
+      ok
+    });
+
+    return promise
+  }
+
+  async function send(value) {
+    let reply, error;
+    const promise = new Promise((resolve, reject) => {
+      reply = resolve;
       error = reject;
     });
+
+    await _wait(
+      () => _sendQueue.length < cap,
+      () => {
+        _sendQueue.push({
+          value,
+          reply,
+          error
+        });
+      }
+    );
+
+    _tick();
+    return promise;
   }
 
-  function send(value) {
-    const len = queue.length;
-    if (len === cap) {
-      throw 'Capacity is full'
-    } if (len > 0) {
-      queue.unshift(value);
-    } else {
-      queue.unshift(value);
-      ready();
-    }
-  }
+  function receiver(fn) {
+    let
+      cancelled = false;
 
-  function get() {
-    const len = queue.length;
-    if (len == 0) {
-      return undefined
+    async function loop() {
+      while(!cancelled) {
+        let obj = await _wait(
+          () => _sendQueue.length > 0,
+          () => {
+            if (!cancelled) {
+              return _sendQueue.shift()
+            }
+          }
+        );
+        if (cancelled) break;
 
-    } else if (len > 1) {
-      return queue.pop();
+        _tick();
 
-    } else {
-      const value = queue.pop();
-      reset();
-      return value;
-    }
-  }
-
-  async function watch(fn) {
-    for(;;) {
-      await wait;
-      await fn(get());
-    }
-  }
-
-  function trans(fn) {
-    const chan = Chan();
-
-    (async () => {
-      for(;;) {
         try {
-          await wait;
-          chan.send(await fn(get()));
-        } catch (err) {
-          chan.throw(err);
+          const value = await fn(obj.value);
+          obj.reply(value);
+        } catch (e) {
+          obj.error(e);
+          break;
         }
       }
-    })();
-
-    return chan.readonly;
-  }
-
-  function _throw(err) {
-    error(err);
-  }
-
-  function make(readonly) {
-    const chan = {
-      get,
-      watch,
-      trans,
-      throw: _throw,
-
-      get wait() {
-        return wait;
-      },
-      get cap() {
-        return cap;
-      }
-    };
-
-    if (!readonly) {
-      Object.assign(chan, {
-        send,
-        reset,
-
-        readonly: make(true)
-      });
     }
 
-    return chan;
+    loop();
+
+    return () => {
+      cancelled = true;
+    }
   }
 
-  reset();
-  return make();
+  return {
+    send,
+    receiver,
 
+    readonly: {
+      receiver
+    }
+  }
 }
-
-Chan.join = (...chans) => {
-  const chan = Chan();
-
-  chans.forEach(async (ch) => {
-    for(;;) {
-      try {
-        await ch.wait;
-        chan.send(ch.get());
-      } catch (err) {
-        chan.throw(err);
-      }
-    }
-  });
-
-  return chan;
-
-};
-
-Chan.select = async (...chans) => {
-  const promises = chans.map(
-    (ch) => ch.wait.then(() => ch)
-  );
-
-  return await Promise.race(promises);
-};
