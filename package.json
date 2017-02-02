@@ -15,14 +15,6 @@
     "name": "Viacheslav Bereza",
     "email": "mail@betula.co"
   },
-  "scripts": {
-    "test": "mocha --harmony"
-  },
-  "devDependencies": {
-    "mocha": "3.2.0",
-    "should": "11.1.2",
-    "sinon": "1.17.6"
-  },
   "repository": {
     "type": "git",
     "url": "git://github.com/betula/chan7.git"
