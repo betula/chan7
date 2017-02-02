@@ -102,8 +102,44 @@ function Chan(cap = Infinity) {
           obj.reply(value);
         } catch (e) {
           obj.error(e);
-          break;
         }
+      }
+    }
+
+    loop();
+
+    return () => {
+      cancelled = true;
+    }
+  }
+
+  function forward(fn) {
+    let
+      cancelled = false;
+
+    async function loop() {
+      while(!cancelled) {
+        let obj = await _wait(
+          () => _sendQueue.length > 0,
+          () => {
+            if (!cancelled) {
+              return _sendQueue.shift()
+            }
+          }
+        );
+        if (cancelled) break;
+
+        _tick();
+
+        (async () => {
+          try {
+            const value = await fn(obj.value);
+            obj.reply(value);
+          } catch (e) {
+            obj.error(e);
+          }
+        })();
+
       }
     }
 
@@ -117,9 +153,11 @@ function Chan(cap = Infinity) {
   return {
     send,
     receiver,
+    forward,
 
     readonly: {
-      receiver
+      receiver,
+      forward
     }
   }
 }
