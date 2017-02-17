@@ -1,7 +1,7 @@
 
 module.exports = Chan;
 
-function Chan(cap = Infinity) {
+function Chan() {
   const
     _sendQueue = [];
 
@@ -58,22 +58,20 @@ function Chan(cap = Infinity) {
   }
 
   async function send(value) {
-    let reply, error;
+    let
+      reply,
+      error;
+
     const promise = new Promise((resolve, reject) => {
       reply = resolve;
       error = reject;
     });
 
-    await _wait(
-      () => _sendQueue.length < cap,
-      () => {
-        _sendQueue.push({
-          value,
-          reply,
-          error
-        });
-      }
-    );
+    _sendQueue.push({
+      value,
+      reply,
+      error
+    });
 
     _tick();
     return promise;
